@@ -13,7 +13,7 @@ screen -dmS network-server chirpstack-network-server
 screen -dmS application-server chirpstack-application-server
 
 # Avvia Mqtt
-screen -dmS mqtt mosquitto
+screen -dmS mqtt mosquitto -c /etc/mosquitto/mosquitto.conf
 
 # Esegui 'make run' nella cartella LWN-Simulator in una schermata screen
 cd /LWN-Simulator
