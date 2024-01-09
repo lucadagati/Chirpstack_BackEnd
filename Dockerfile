@@ -38,6 +38,7 @@ COPY chirpstack-network-server.toml /etc/chirpstack-network-server/
 COPY chirpstack-application-server.toml /etc/chirpstack-application-server/
 COPY setup_postgresql.sh /root/
 COPY entrypoint.sh /root/
+COPY mosquitto.conf /etc/mosquitto/
 
 # Esegui lo script di configurazione PostgreSQL
 RUN chmod +x /root/setup_postgresql.sh && /root/setup_postgresql.sh
