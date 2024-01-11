@@ -7,6 +7,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Rome
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
+# Crea la directory /run/mosquitto e imposta i permessi
+RUN mkdir /run/mosquitto/ && chmod 777 /run/mosquitto/
+
 # Installa le dipendenze
 RUN apt-get update && apt-get install -y postgresql mosquitto nano net-tools iputils-ping wget curl software-properties-common build-essential tar ssh golang-go git screen mosquitto redis-server -y
 
