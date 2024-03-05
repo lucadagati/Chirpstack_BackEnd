@@ -11,7 +11,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN mkdir /run/mosquitto/ && chmod 777 /run/mosquitto/
 
 # Installa le dipendenze
-RUN apt-get update && apt-get install -y postgresql mosquitto nano net-tools iputils-ping wget curl software-properties-common build-essential tar ssh golang-go git screen mosquitto redis-server -y
+RUN apt-get update && apt-get install -y postgresql mosquitto nano net-tools iputils-ping wget curl software-properties-common build-essential tar ssh git screen mosquitto redis-server -y
 
 # Aggiungi la chiave GPG e il repository di ChirpStack
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 1CE2AFD36DBCCA00
@@ -21,8 +21,18 @@ RUN apt-get update
 # Installa ChirpStack Network Server e Application Server
 RUN apt-get install -y chirpstack-network-server chirpstack-application-server
 
-# Aggiorna il PATH per includere il binario di Go
-ENV PATH="${PATH}:$(go env GOPATH)/bin"
+# Download the Go 1.21.3 tarball
+RUN wget https://go.dev/dl/go1.21.3.linux-amd64.tar.gz -O go1.21.3.linux-amd64.tar.gz
+
+# Extract the tarball to /usr/local (installing Go)
+RUN tar -C /usr/local -xzf go1.21.3.linux-amd64.tar.gz
+
+# Remove the tarball to clear space
+RUN rm go1.21.3.linux-amd64.tar.gz
+
+# Set the Go binary path globally
+ENV PATH="/usr/local/go/bin:${PATH}"
+#ENV PATH="${PATH}:$(go env GOPATH)/bin"
 
 # Installa statik e aggiorna il PATH
 RUN go install github.com/rakyll/statik@latest
