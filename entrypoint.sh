@@ -16,13 +16,14 @@ screen -dmS application-server chirpstack-application-server
 screen -dmS mqtt mosquitto -c /etc/mosquitto/mosquitto.conf
 
 # Attendi che MQTT sia pronto prima di avviare il Gateway Bridge
-sleep 2
+sleep 5
 
-# Avvia ChirpStack Gateway Bridge (UDP 1700 -> MQTT, per LWN-Simulator)
+# Avvia ChirpStack Gateway Bridge (UDP 1700 -> MQTT); LWN si connette qui
 screen -dmS gateway-bridge chirpstack-gateway-bridge -c /etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml
+sleep 3
 
-# LWN-Simulator: avvio ritardato, working dir esplicita, binario precompilato (porta 9000, bind 0.0.0.0)
-(sleep 10; screen -dmS lwn-simulator sh -c 'cd /LWN-Simulator && (test -x bin/lwnsimulator && exec ./bin/lwnsimulator || exec make run)') &
+# LWN-Simulator: avvio dopo che il bridge è in ascolto su 1700 (bridgeAddress in lwnsimulator/simulator.json)
+(sleep 8; screen -dmS lwn-simulator sh -c 'cd /LWN-Simulator && (test -x bin/lwnsimulator && exec ./bin/lwnsimulator || exec make run)') &
 
 # Optional: auto-run seed if token is provided (env CHIRPSTACK_API_TOKEN or file /root/chirpstack_token)
 (

@@ -48,6 +48,8 @@ RUN sed -i 's/"port":8000,/"port":9000,/' config.json && \
 RUN sed -i 's/return r.info()/if r.info == nil { return \&Eu868{} }; return r.info()/' simulator/components/device/regional_parameters/region.go || true
 # Fix: frontend calls /api/bridge/ (trailing slash) but server only has /api/bridge - add redirect in Gin or fix JS
 RUN sed -i 's|url+"/api/bridge/"|url+"/api/bridge"|g' webserver/public/js/custom/custom.js
+# Fix: "Socket not connected" blocks Run — allow start even if Socket.IO not yet connected (real-time updates may be delayed)
+RUN sed -i 's/if (!socket.connected){/if (false \&\& !socket.connected){ \/\/ bypass: allow Run without WebSocket/' webserver/public/js/custom/custom.js
 RUN make install-dep
 RUN make build
 
