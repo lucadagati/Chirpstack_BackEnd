@@ -18,8 +18,8 @@ RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 1CE2AFD36DBCCA00
 RUN echo "deb https://artifacts.chirpstack.io/packages/3.x/deb stable main" | tee /etc/apt/sources.list.d/chirpstack.list
 RUN apt-get update
 
-# Installa ChirpStack Network Server e Application Server
-RUN apt-get install -y chirpstack-network-server chirpstack-application-server
+# Installa ChirpStack Network Server, Application Server e Gateway Bridge (per LWN-Simulator)
+RUN apt-get install -y chirpstack-network-server chirpstack-application-server chirpstack-gateway-bridge
 
 # Download the Go 1.21.3 tarball
 RUN wget https://go.dev/dl/go1.21.3.linux-amd64.tar.gz -O go1.21.3.linux-amd64.tar.gz
@@ -52,6 +52,14 @@ COPY chirpstack-application-server.toml /etc/chirpstack-application-server/
 COPY setup_postgresql.sh /root/
 COPY entrypoint.sh /root/
 COPY mosquitto.conf /etc/mosquitto/
+RUN mkdir -p /etc/chirpstack-gateway-bridge
+COPY chirpstack-gateway-bridge.toml /etc/chirpstack-gateway-bridge/
+COPY lwnsimulator_demo/ /LWN-Simulator/lwnsimulator/
+COPY seed_demo.sh /root/
+RUN chmod +x /root/seed_demo.sh
+
+# Abilita avvio automatico della simulazione LWN (opzionale: gli studenti possono avviarla dalla UI)
+RUN sed -i 's/"autoStart": false/"autoStart": true/' /LWN-Simulator/config.json
 
 # Esegui lo script di configurazione PostgreSQL
 RUN chmod +x /root/setup_postgresql.sh && /root/setup_postgresql.sh

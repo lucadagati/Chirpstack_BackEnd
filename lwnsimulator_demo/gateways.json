@@ -1,0 +1,18 @@
+{
+	"0": {
+		"id": 0,
+		"info": {
+			"active": true,
+			"typeGateway": false,
+			"name": "Demo Gateway",
+			"macAddress": "0102030405060708",
+			"location": {
+				"latitude": 37.5,
+				"longitude": 15.0
+			},
+			"keepAlive": 30,
+			"ip": "",
+			"port": ""
+		}
+	}
+}

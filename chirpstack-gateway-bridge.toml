@@ -1,0 +1,32 @@
+# ChirpStack Gateway Bridge - riceve UDP da LWN-Simulator (porta 1700) e inoltra su MQTT
+
+[general]
+log_level=4
+log_to_syslog=false
+
+[filters]
+net_ids=[]
+join_euis=[]
+
+[backend]
+type="semtech_udp"
+
+[backend.semtech_udp]
+udp_bind="0.0.0.0:1700"
+skip_crc_check=false
+
+[integration]
+marshaler="json"
+
+[integration.mqtt]
+event_topic_template="gateway/{{ .GatewayID }}/event/{{ .EventType }}"
+state_topic_template="gateway/{{ .GatewayID }}/state/{{ .StateType }}"
+command_topic_template="gateway/{{ .GatewayID }}/command/#"
+
+[integration.mqtt.auth]
+type="generic"
+
+[integration.mqtt.auth.generic]
+server="tcp://localhost:1883"
+username=""
+password=""
