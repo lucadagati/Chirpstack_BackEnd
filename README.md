@@ -7,6 +7,7 @@ A Docker-based deployment of the **ChirpStack** LoRaWAN network stack with **LWN
 ## Table of Contents
 
 - [Overview](#overview)
+- [Theory: LoRaWAN and ChirpStack](#theory-lorawan-and-chirpstack)
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
@@ -25,9 +26,63 @@ This repository provides:
 
 - **ChirpStack** (Network Server + Application Server) for managing LoRaWAN gateways, applications, and devices.
 - **ChirpStack Gateway Bridge** to accept UDP packet-forwarder traffic (e.g. from LWN-Simulator) and publish to MQTT.
-- **LWN-Simulator** with a ready-to-use demo: one virtual gateway (pre-configured) and two OTAA devices that you add in the LWN UI (same DevEUI/AppKey as in ChirpStack after the seed) so they talk to ChirpStack through the gateway bridge.
+- **LWN-Simulator** with a ready-to-use **ABP** demo: one virtual gateway and two ABP devices (pre-configured) that send uplinks through the ChirpStack Gateway Bridge with no join step.
 
-After a one-time seed step and adding the two devices in LWN-Simulator, students can run the simulation and observe join requests, uplinks, and downlinks in the ChirpStack web UI.
+After a one-time run of the **one-shot script** (with your ChirpStack API token), students open LWN-Simulator, turn on the gateway and devices, and see uplinks in ChirpStack.
+
+---
+
+## Theory: LoRaWAN and ChirpStack
+
+### LoRaWAN in brief
+
+**LoRa** is a proprietary physical layer (PHY) that uses Chirp Spread Spectrum (CSS) in unlicensed sub-GHz bands (e.g. 868 MHz in Europe, 915 MHz in the US). It provides long range and low power at the cost of low data rate and limited payload size.
+
+**LoRaWAN** is the MAC/network layer defined by the LoRa Alliance. It runs on top of LoRa and defines:
+
+- **Star-of-stars topology**: end devices talk only to gateways; gateways forward frames to a central **Network Server** (and optionally a **Join Server**). The Network Server manages device identity, security, and routing of application data to **Application Servers**.
+- **Uplink vs downlink**: devices send **uplinks** (device → network); the network can send **downlinks** (network → device) for acknowledgements or commands. Downlinks are constrained by regional regulations (duty cycle, dwell time).
+- **Activation**:
+  - **OTAA (Over-The-Air Activation)**: device performs a **join** with the network; it uses a root key (AppKey) and receives a **DevAddr** and session keys (NwkSKey, AppSKey). More secure and recommended for production.
+  - **ABP (Activation By Personalization)**: DevAddr, NwkSKey, and AppSKey are pre-configured in the device and in the network. No join; the device can send uplinks immediately. Used for testing and demos (as in this project).
+- **Identifiers**: each device has a globally unique **DevEUI** (64-bit). After activation it gets a **DevAddr** (32-bit, network-local). **NwkSKey** protects and authenticates MAC commands; **AppSKey** encrypts application payloads.
+
+```mermaid
+flowchart LR
+    subgraph device["End device"]
+        DevEUI[DevEUI]
+        DevAddr[DevAddr]
+        Keys[NwkSKey / AppSKey]
+    end
+    subgraph network["Network"]
+        GW[Gateway]
+        NS[Network Server]
+        AS[Application Server]
+    end
+    DevEUI --> GW
+    DevAddr --> GW
+    Keys --> GW
+    GW --> NS
+    NS --> AS
+```
+
+### ChirpStack
+
+**ChirpStack** is an open-source LoRaWAN network stack. Its main components are:
+
+| Component | Role |
+|-----------|------|
+| **ChirpStack Network Server** | Receives uplinks from gateways (via a **Gateway Bridge**), manages device sessions (ABP/OTAA), decrypts and authenticates frames, and forwards application payloads to the Application Server. Handles join requests and downlink scheduling. |
+| **ChirpStack Application Server** | Web UI and API for managing **organizations**, **gateways**, **applications**, and **devices**. Stores device metadata, integrates with external systems (e.g. MQTT, HTTP), and shows LoRaWAN frames (uplinks/downlinks) per device. |
+| **ChirpStack Gateway Bridge** | Sits between gateways and the rest of the stack. Gateways speak the **Semtech packet-forwarder** protocol (UDP). The bridge converts these packets to MQTT (or gRPC) messages consumed by the Network Server. So ChirpStack can work with any gateway that implements the packet-forwarder protocol. |
+
+In this project, **LWN-Simulator** acts as a virtual gateway plus virtual end devices: it generates LoRaWAN-like uplinks and sends them over UDP (packet-forwarder format) to the ChirpStack Gateway Bridge. That way you can try ChirpStack end-to-end without real hardware.
+
+### How it fits together
+
+1. **LWN-Simulator** defines virtual gateways and ABP devices (DevEUI, DevAddr, NwkSKey, AppSKey) in JSON.
+2. The **one-shot script** mirrors that configuration into **ChirpStack** (same gateways and devices, with ABP activation).
+3. When you turn ON a device in LWN, it sends uplinks to the virtual gateway → **Gateway Bridge** (UDP 1700) → **MQTT** → **Network Server** → **Application Server** → you see the frames in the ChirpStack UI.
 
 ---
 
@@ -74,13 +129,13 @@ flowchart TB
 - **ChirpStack Gateway Bridge**: listens on UDP port 1700 (Semtech packet-forwarder protocol), converts to MQTT messages consumed by the Network Server.
 - **LWN-Simulator**: simulates LoRaWAN devices and a virtual gateway that sends UDP to the Gateway Bridge.
 
-### LoRaWAN demo data flow (student scenario)
+### LoRaWAN demo data flow (ABP)
 
-When the LWN-Simulator runs, simulated devices send uplinks; the virtual gateway forwards them to the Gateway Bridge, which then publishes to MQTT. ChirpStack Network Server processes the frames and the Application Server exposes them in the web UI.
+With ABP, devices send data uplinks immediately (no join). The virtual gateway forwards them to the Gateway Bridge → MQTT → ChirpStack Network Server → Application Server → web UI.
 
 ```mermaid
 sequenceDiagram
-    participant Dev as LWN Simulated Device
+    participant Dev as LWN ABP Device
     participant Fwd as LWN Forwarder
     participant Gw as LWN Virtual Gateway
     participant GWBR as Gateway Bridge
@@ -89,26 +144,13 @@ sequenceDiagram
     participant AS as ChirpStack Application Server
     participant UI as Web UI
 
-    Note over Dev,Gw: OTAA join
-    Dev->>Fwd: Join Request
-    Fwd->>Gw: RXPK (uplink)
+    Note over Dev,UI: ABP data uplink (no join)
+    Dev->>Fwd: Data uplink (DevAddr, NwkSKey, AppSKey)
+    Fwd->>Gw: RXPK
     Gw->>GWBR: UDP (Semtech PF)
     GWBR->>MQTT: Publish gateway/.../event/up
     MQTT->>NS: Uplink frame
-    NS->>AS: Join + session
-    AS->>NS: Join Accept
-    NS->>MQTT: Publish gateway/.../command/down
-    MQTT->>GWBR: Downlink
-    GWBR->>Gw: UDP (downlink)
-    Gw->>Dev: Join Accept
-
-    Note over Dev,UI: Data uplink
-    Dev->>Fwd: Data uplink
-    Fwd->>Gw: RXPK
-    Gw->>GWBR: UDP
-    GWBR->>MQTT: event/up
-    MQTT->>NS: Uplink
-    NS->>AS: Decoded payload
+    NS->>AS: Decoded payload (session already known)
     AS->>UI: Show in Applications / Frames
 ```
 
@@ -174,18 +216,18 @@ Edit these according to your network and region (e.g. band EU868 is set in the N
 
 ---
 
-## Student Demo Environment
+## Student Demo Environment (ABP)
 
-The image includes a **pre-configured demo** so that, after a one-time ChirpStack seed, students can immediately run a LoRaWAN simulation and see frames in ChirpStack.
+The demo uses **ABP (Activation By Personalization)** so devices send data immediately (no join). A **one-shot script** configures both ChirpStack and LWN-Simulator; students run it once with their ChirpStack API token.
 
 ### What is pre-configured
 
 ```mermaid
 flowchart LR
-    subgraph lwn["LWN-Simulator config"]
+    subgraph lwn["LWN-Simulator"]
         GW[Virtual Gateway<br/>ID: 0102030405060708]
-        D1[Device 1: add via UI<br/>DevEUI: 0102030405060709]
-        D2[Device 2: add via UI<br/>DevEUI: 0a0b0c0d0e0f1011]
+        D1[Temperature Sensor<br/>DevEUI 0102...0709 DevAddr 01020304]
+        D2[Humidity Sensor<br/>DevEUI 0a0b...1011 DevAddr 05060708]
     end
     BR[Bridge: localhost:1700]
     GW --> BR
@@ -194,30 +236,16 @@ flowchart LR
 ```
 
 - **LWN-Simulator**
-  - **Bridge address**: `localhost:1700` (ChirpStack Gateway Bridge).
-  - **One virtual gateway**: name "Demo Gateway", ID `0102030405060708` (pre-configured).
-  - **Two OTAA devices**: not pre-loaded; add them in the LWN-Simulator web UI (see [Adding the demo devices in LWN-Simulator](#adding-the-demo-devices-in-lwn-simulator)) so they match ChirpStack after the seed. Use DevEUI and AppKey below.
-  - **Shared AppKey** (both devices): `2b7e151628aed2a6abf7158809cf4f3c`.
-- **Auto-start**: the simulation starts automatically when the container starts (`autoStart: true` in `config.json`). To start it manually from the LWN web UI instead, set `autoStart: false` in the Dockerfile and rebuild.
+  - **Bridge address**: `localhost:1700`.
+  - **One virtual gateway**: "Demo Gateway", ID `0102030405060708` (pre-configured in `gateways.json`).
+  - **Two ABP devices** (pre-configured in `devices.json`): "Temperature Sensor" and "Humidity Sensor", with DevAddr, NwkSKey, AppSKey set; `supportedOtaa: false` so they send without join.
+  - **Auto-start**: simulation starts when the container starts (`autoStart: true`).
 
-#### Adding the demo devices in LWN-Simulator
+- **ChirpStack** (after running the one-shot script): same organization, gateway, application, device profile (ABP, EU868), and two devices with matching DevEUI/DevAddr/NwkSKey/AppSKey.
 
-After ChirpStack has been seeded, add two OTAA devices in the LWN-Simulator UI so they match the devices created in ChirpStack:
+### One-shot setup (run once; students can use the same)
 
-| Parameter   | Device 1 (e.g. "Temperature Sensor") | Device 2 (e.g. "Humidity Sensor") |
-|------------|----------------------------------------|------------------------------------|
-| **Name**   | Sensore Temperatura                    | Sensore Umidità                    |
-| **DevEUI** | `0102030405060709`                     | `0a0b0c0d0e0f1011`                 |
-| **AppKey** | `2b7e151628aed2a6abf7158809cf4f3c`     | `2b7e151628aed2a6abf7158809cf4f3c` |
-| **Region** | EU868                                  | EU868                              |
-
-Create each device in LWN-Simulator (Devices → Add) with the above values. Leave DevAddr / NwkSKey / AppSKey as zero for OTAA; they are assigned after join.
-
-For the demo to work, ChirpStack must have the **same** organization, gateway ID, application, and devices (same DevEUI and OTAA keys). The seed script does that in one go.
-
-### First-time setup workflow (run once per deployment)
-
-Run this workflow **once** after the first time you start the container (or after resetting ChirpStack data).
+Run the script **once** after the container is up and you have a ChirpStack API token.
 
 ```mermaid
 flowchart TD
@@ -225,12 +253,14 @@ flowchart TD
     B --> C[Register or log in]
     C --> D[Settings → API keys → Add API key]
     D --> E[Copy the API token]
-    E --> F["Run: docker exec chirpstack /root/seed_demo.sh \"TOKEN\""]
-    F --> G[Seed creates: org, gateway, app, 2 devices with OTAA keys]
-    G --> H[Demo ready for students]
+    E --> F["docker exec chirpstack /root/seed_demo.sh \"TOKEN\""]
+    F --> G[Script: ChirpStack org, gateway, app, ABP profile, 2 devices]
+    G --> H[Script: activate ABP sessions; add devices to LWN if needed; start LWN]
+    H --> I[Open LWN http://localhost:9000, turn ON gateway and devices]
+    I --> J[Uplinks appear in ChirpStack]
 ```
 
-**Steps in detail:**
+**Steps:**
 
 1. **Start the container** (if not already running):
    ```bash
@@ -238,22 +268,21 @@ flowchart TD
      -p 8080:8080 -p 1883:1883 -p 9000:9000 chirpstack-complete
    ```
 
-2. **Open ChirpStack**: go to **http://localhost:8080** and **register** (or log in). The first user can act as admin.
+2. **Open ChirpStack** at **http://localhost:8080**, **register** or log in.
 
-3. **Create an API key**: in ChirpStack go to **Settings** → **API keys** → **Add API key**. Copy the generated token.
+3. **Create an API key**: **Settings** → **API keys** → **Add API key**. Copy the token.
 
-4. **Run the seed script** (replace `YOUR_API_TOKEN` with the token you copied):
+4. **Run the one-shot script** (replace `YOUR_API_TOKEN`):
    ```bash
    docker exec chirpstack /root/seed_demo.sh "YOUR_API_TOKEN"
    ```
-   The script creates:
-   - Organization "Demo per studenti" (display name)
-   - Gateway "Demo Gateway" with ID `0102030405060708`
-   - Application "demo-app"
-   - A device profile (EU868, OTAA)
-   - Two devices with the same DevEUI and AppKey as in LWN-Simulator
+   **Optional auto-seed at startup:** if you already have an API token, you can run the container with `-e CHIRPSTACK_API_TOKEN=your_token` so the script runs automatically after ChirpStack and LWN are ready (no need to run step 4 manually).
+   The script uses **LWN config as single source of truth**: it reads `lwnsimulator_demo/gateways.json` and `devices.json` and creates in ChirpStack the same gateways and devices (with names, IDs, and ABP keys). So whatever you define in LWN is mirrored into ChirpStack.
+   - Creates organization "demo-org", network server, gateway profile, device profile (ABP EU868), service profile, application "demo-app".
+   - Creates every gateway from `gateways.json` and every device from `devices.json`, then activates ABP for each device.
+   - Starts the LWN simulation if the API is ready.
 
-After this, the demo is ready: students can use LWN-Simulator and ChirpStack without further setup.
+5. **Open LWN-Simulator** at **http://localhost:9000**. Turn **ON** the gateway "Demo Gateway" and the two devices. Uplinks will appear in ChirpStack under **Applications** → **demo-app** → device → **LoRaWAN frames**.
 
 ### Student workflow (using the demo)
 
@@ -266,12 +295,12 @@ flowchart LR
     end
 
     subgraph lwn_ui["LWN-Simulator http://localhost:9000"]
-        START[Start simulation if not auto-started]
-        TURN_ON[Turn ON gateway and devices]
-        OBSERVE[Observe logs and frames]
+        OPEN[Open dashboard]
+        TURN_ON[Turn ON gateway and both ABP devices]
+        OBSERVE[Observe uplinks in ChirpStack]
     end
 
-    START --> TURN_ON
+    OPEN --> TURN_ON
     TURN_ON --> OBSERVE
     OBSERVE --> GW_UI
     OBSERVE --> APP_UI
@@ -279,18 +308,16 @@ flowchart LR
 ```
 
 1. **ChirpStack (http://localhost:8080)**  
-   - **Gateways**: check that "Demo Gateway" appears and receives traffic.  
-   - **Applications** → **demo-app**: open each device and check **LoRaWAN frames** for join requests and uplinks.
+   - **Gateways**: "Demo Gateway" should show traffic.  
+   - **Applications** → **demo-app**: open each device and check **LoRaWAN frames** for uplinks (ABP: no join, data only).
 
 2. **LWN-Simulator (http://localhost:9000)**  
-   - Bridge address is already set to `localhost:1700`.  
-   - Add the two demo devices (see [Adding the demo devices in LWN-Simulator](#adding-the-demo-devices-in-lwn-simulator)) if not already present.  
-   - If auto-start is disabled, click **Start** to run the simulation.  
-   - Turn **ON** the gateway "Demo Gateway" and the two devices.  
-   - Devices will perform OTAA join and then send periodic uplinks; corresponding frames will appear in ChirpStack.
+   - Bridge address is already `localhost:1700`.  
+   - Simulation may already be running (auto-start). If not, click **Start**.  
+   - Turn **ON** the gateway "Demo Gateway" and the two ABP devices (Temperature Sensor, Humidity Sensor).  
+   - Devices send periodic uplinks; frames appear in ChirpStack.
 
 3. **MQTT (optional)**  
-   To inspect gateway events on MQTT (e.g. if mapped to host port 1883 or 1884):
    ```bash
    mosquitto_sub -h localhost -p 1883 -t 'gateway/#' -v
    ```
@@ -321,8 +348,11 @@ flowchart LR
 
 | Issue | What to check |
 |-------|----------------|
-| **Gateway not visible in ChirpStack** | Ensure the Gateway Bridge is running: `docker exec chirpstack screen -ls` (you should see `gateway-bridge`). In LWN-Simulator, the gateway must be **ON** and the bridge address must be `localhost:1700`. |
-| **Devices do not join (OTAA)** | In ChirpStack, verify that the two devices have **OTAA keys** set (same AppKey as in LWN: `2b7e151628aed2a6abf7158809cf4f3c`). If you ran the seed script successfully, keys are already set. |
+| **LWN not reachable on port 9000** | LWN starts with a short delay (10 s) and binds to `0.0.0.0:9000`. Rebuild the image and ensure you use `-p 9000:9000`. If it still fails, run manually: `docker exec -d chirpstack sh -c 'cd /LWN-Simulator && ./bin/lwnsimulator'`. |
+| **"Unable to load info of gateway bridge" (LWN-Simulator)** | The image includes a fix for the bridge API URL (no trailing slash). Rebuild the image: `docker build -t chirpstack-complete .` and run the container again. |
+| **ChirpStack is empty (no org, gateway, devices)** | By design, ChirpStack is not pre-seeded. Run the one-shot script once with your API token: `docker exec chirpstack /root/seed_demo.sh "YOUR_TOKEN"`. Alternatively, start the container with `-e CHIRPSTACK_API_TOKEN=your_token` (or a file at `/root/chirpstack_token`) to auto-run the seed after services are up. |
+| **Gateway not visible in ChirpStack** | Ensure the Gateway Bridge is running: `docker exec chirpstack screen -ls` (you should see `gateway-bridge`). In LWN-Simulator, turn the gateway **ON** and ensure bridge address is `localhost:1700`. |
+| **No uplinks (ABP)** | In ChirpStack, open each device → **Activation** and ensure ABP is set with the same DevAddr, NwkSKey, AppSKey as in the one-shot script (see script or README). Run the one-shot script again or activate once manually. |
 | **Simulation does not start** | Check logs: `docker logs chirpstack`. If you prefer to start the simulation manually from the LWN UI, set `autoStart: false` in `config.json` in the Dockerfile and rebuild the image. |
 | **Port 1883 already in use** | Use `-p 1884:1883` when running the container and connect MQTT clients to port 1884 on the host. |
 

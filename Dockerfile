@@ -41,8 +41,13 @@ ENV PATH="${PATH}:/root/go/bin"
 # Clona e installa LWN Simulator
 RUN git clone https://github.com/UniCT-ARSLab/LWN-Simulator.git
 WORKDIR /LWN-Simulator
-# Modifica la porta in config.json da 8000 a 9000
-RUN sed -i 's/"port":8000,/"port":9000,/' config.json
+# Porta 9000 e bind su tutte le interfacce (raggiungibile da host)
+RUN sed -i 's/"port":8000,/"port":9000,/' config.json && \
+    sed -i 's/"address":"[^"]*"/"address":"0.0.0.0"/' config.json || true
+# Fix: ensure region code 0 (EU868) works when unmarshaling device JSON (nil map entry workaround)
+RUN sed -i 's/return r.info()/if r.info == nil { return \&Eu868{} }; return r.info()/' simulator/components/device/regional_parameters/region.go || true
+# Fix: frontend calls /api/bridge/ (trailing slash) but server only has /api/bridge - add redirect in Gin or fix JS
+RUN sed -i 's|url+"/api/bridge/"|url+"/api/bridge"|g' webserver/public/js/custom/custom.js
 RUN make install-dep
 RUN make build
 
@@ -58,8 +63,10 @@ COPY lwnsimulator_demo/ /LWN-Simulator/lwnsimulator/
 COPY seed_demo.sh /root/
 RUN chmod +x /root/seed_demo.sh
 
-# Abilita avvio automatico della simulazione LWN (opzionale: gli studenti possono avviarla dalla UI)
+# Abilita avvio automatico della simulazione LWN
 RUN sed -i 's/"autoStart": false/"autoStart": true/' /LWN-Simulator/config.json
+# Assicura che config sia in bin/ per run-release
+RUN cp /LWN-Simulator/config.json /LWN-Simulator/bin/config.json 2>/dev/null || true
 
 # Esegui lo script di configurazione PostgreSQL
 RUN chmod +x /root/setup_postgresql.sh && /root/setup_postgresql.sh

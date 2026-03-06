@@ -1,1 +1,86 @@
-{}
+{
+	"0": {
+		"id": 0,
+		"info": {
+			"name": "Temperature Sensor",
+			"devEUI": "0102030405060709",
+			"devAddr": "01020304",
+			"nwkSKey": "2b7e151628aed2a6abf7158809cf4f3c",
+			"appSKey": "2b7e151628aed2a6abf7158809cf4f3c",
+			"appKey": "00000000000000000000000000000000",
+			"status": {
+				"active": true,
+				"infoUplink": {
+					"fcnt": 0,
+					"fport": 1
+				},
+				"mtype": "UnConfirmedDataUp",
+				"payload": "Hello LoRa",
+				"fcntDown": 0,
+				"base64": false
+			},
+			"configuration": {
+				"region": 0,
+				"sendInterval": 30,
+				"ackTimeout": 5,
+				"range": 10000,
+				"disableFCntDown": false,
+				"supportedOtaa": false,
+				"supportedADR": true,
+				"supportedFragment": false,
+				"supportedClassB": false,
+				"supportedClassC": false,
+				"dataRate": 5,
+				"rx1DROffset": 0,
+				"nbRetransmission": 0
+			},
+			"location": {
+				"latitude": 37.5,
+				"longitude": 15.0
+			},
+			"rxs": []
+		}
+	},
+	"1": {
+		"id": 1,
+		"info": {
+			"name": "Humidity Sensor",
+			"devEUI": "0a0b0c0d0e0f1011",
+			"devAddr": "05060708",
+			"nwkSKey": "2b7e151628aed2a6abf7158809cf4f3c",
+			"appSKey": "2b7e151628aed2a6abf7158809cf4f3c",
+			"appKey": "00000000000000000000000000000000",
+			"status": {
+				"active": true,
+				"infoUplink": {
+					"fcnt": 0,
+					"fport": 1
+				},
+				"mtype": "UnConfirmedDataUp",
+				"payload": "Humidity:42",
+				"fcntDown": 0,
+				"base64": false
+			},
+			"configuration": {
+				"region": 0,
+				"sendInterval": 45,
+				"ackTimeout": 5,
+				"range": 10000,
+				"disableFCntDown": false,
+				"supportedOtaa": false,
+				"supportedADR": true,
+				"supportedFragment": false,
+				"supportedClassB": false,
+				"supportedClassC": false,
+				"dataRate": 5,
+				"rx1DROffset": 0,
+				"nbRetransmission": 0
+			},
+			"location": {
+				"latitude": 37.5,
+				"longitude": 15.0
+			},
+			"rxs": []
+		}
+	}
+}
