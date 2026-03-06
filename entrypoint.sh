@@ -22,8 +22,23 @@ sleep 5
 screen -dmS gateway-bridge chirpstack-gateway-bridge -c /etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml
 sleep 3
 
-# LWN-Simulator: avvio dopo che il bridge è in ascolto su 1700 (bridgeAddress in lwnsimulator/simulator.json)
-(sleep 8; screen -dmS lwn-simulator sh -c 'cd /LWN-Simulator && (test -x bin/lwnsimulator && exec ./bin/lwnsimulator || exec make run)') &
+# LWN-Simulator: avvio ritardato (porta 9000)
+(
+  sleep 12
+  cd /LWN-Simulator && test -x bin/lwnsimulator && screen -dmS lwn-simulator ./bin/lwnsimulator
+) >> /var/log/lwn-start.log 2>&1 &
+# Fallback: ogni 60s se 9000 non risponde, riavvia LWN
+(
+  sleep 30
+  while true; do
+    curl -s -o /dev/null -m 2 http://127.0.0.1:9000/api/status || {
+      screen -S lwn-simulator -X quit 2>/dev/null
+      cd /LWN-Simulator && test -x bin/lwnsimulator && screen -dmS lwn-simulator ./bin/lwnsimulator
+    }
+    sleep 60
+  done
+) >> /var/log/lwn-start.log 2>&1 &
+disown 2>/dev/null || true
 
 # Optional: auto-run seed if token is provided (env CHIRPSTACK_API_TOKEN or file /root/chirpstack_token)
 (
