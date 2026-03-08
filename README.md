@@ -28,7 +28,7 @@ This repository provides:
 - **ChirpStack Gateway Bridge** to accept UDP packet-forwarder traffic (e.g. from LWN-Simulator) and publish to MQTT.
 - **LWN-Simulator** with a ready-to-use **ABP** demo: one virtual gateway and two ABP devices (pre-configured) that send uplinks through the ChirpStack Gateway Bridge with no join step.
 
-After a one-time run of the **one-shot script** (with your ChirpStack API token), students open LWN-Simulator, turn on the gateway and devices, and see uplinks in ChirpStack.
+At first start, **bootstrap** creates a demo user and seeds ChirpStack from the LWN config (no manual registration or API key). Students log in to ChirpStack with **demo@local** / **demo**, open LWN-Simulator, turn on the gateway and devices, and see uplinks in ChirpStack.
 
 ---
 
@@ -81,7 +81,7 @@ In this project, **LWN-Simulator** acts as a virtual gateway plus virtual end de
 ### How it fits together
 
 1. **LWN-Simulator** defines virtual gateways and ABP devices (DevEUI, DevAddr, NwkSKey, AppSKey) in JSON.
-2. The **one-shot script** mirrors that configuration into **ChirpStack** (same gateways and devices, with ABP activation).
+2. The **bootstrap/seed** (automatic at first start, or via API token) mirrors that configuration into **ChirpStack** (same gateways and devices, with ABP activation).
 3. When you turn ON a device in LWN, it sends uplinks to the virtual gateway → **Gateway Bridge** (UDP 1700) → **MQTT** → **Network Server** → **Application Server** → you see the frames in the ChirpStack UI.
 
 ---
@@ -123,11 +123,12 @@ flowchart TB
     User -->|HTTP 9000| LWN
 ```
 
-- **PostgreSQL**: databases for Network Server (`chirpstack_ns`) and Application Server (`chirpstack_as`).
-- **Redis**: used by both ChirpStack components for caching and queues.
-- **Mosquitto**: MQTT broker; Network Server and Application Server subscribe/publish here; Gateway Bridge publishes gateway events and receives commands.
-- **ChirpStack Gateway Bridge**: listens on UDP port 1700 (Semtech packet-forwarder protocol), converts to MQTT messages consumed by the Network Server.
-- **LWN-Simulator**: simulates LoRaWAN devices and a virtual gateway that sends UDP to the Gateway Bridge.
+- **Supervisord**: processo principale (PID 1) che avvia e mantiene in esecuzione Mosquitto, ChirpStack (Network Server, Application Server, Gateway Bridge) e LWN-Simulator, con **restart automatico** in caso di crash (niente screen, gestione persistente).
+- **PostgreSQL**: database per Network Server (`chirpstack_ns`) e Application Server (`chirpstack_as`), avviati dall’entrypoint prima di supervisord.
+- **Redis**: usato da ChirpStack per cache e code; avviato dall’entrypoint.
+- **Mosquitto**: broker MQTT; Network Server e Application Server pubblicano/sottoscrivono qui; il Gateway Bridge pubblica gli eventi dei gateway.
+- **ChirpStack Gateway Bridge**: in ascolto su UDP 1700 (protocollo Semtech packet-forwarder), converte in messaggi MQTT per il Network Server.
+- **LWN-Simulator**: simula dispositivi LoRaWAN e un gateway virtuale che invia UDP al Gateway Bridge.
 
 ### LoRaWAN demo data flow (ABP)
 
@@ -172,31 +173,31 @@ git clone https://github.com/lucadagati/Chirpstack_BackEnd.git
 cd Chirpstack_BackEnd
 ```
 
-### 2. Build the Docker image
+### 2. Deploy (build + run, bootstrap automatico)
+
+Da questa directory:
+
+```bash
+chmod +x deploy.sh
+./deploy.sh --clean
+```
+
+`--clean` rimuove container e immagine esistenti prima di ricostruire (deploy pulito). Senza `--clean` crea solo un nuovo container (fallisce se il nome è già in uso).
+
+Oppure in due passi:
 
 ```bash
 docker build -t chirpstack-complete .
-```
-
-This creates the image `chirpstack-complete`. You can change the name by adjusting the `-t` value.
-
-### 3. Start the container
-
-Map the required ports so you can access the web UIs and MQTT from the host:
-
-```bash
 docker run -dit --restart unless-stopped --name chirpstack \
-  -p 8080:8080 \
-  -p 1883:1883 \
-  -p 9000:9000 \
+  -p 8080:8080 -p 1884:1883 -p 9000:9000 \
   chirpstack-complete
 ```
 
-- **8080**: ChirpStack web interface.
-- **1883**: Mosquitto MQTT (use `-p 1884:1883` if 1883 is already in use on the host).
-- **9000**: LWN-Simulator web interface.
+Attendere ~60 s: il bootstrap crea l’utente **demo@local** / **demo**, l’organizzazione **demo-org**, gateway, profili, application **demo-app** e i due device (temperature-sensor, humidity-sensor). Accedi a http://localhost:8080, seleziona l’org **demo-org**, e apri LWN su http://localhost:9000 per vedere gli uplink in ChirpStack.
 
-Replace `chirpstack` with any container name you prefer.
+- **8080**: ChirpStack web interface.
+- **1884**: Mosquitto MQTT (mappato da 1883 nel container; usare 1884 se 1883 è occupata sull’host).
+- **9000**: LWN-Simulator web interface.
 
 ---
 
@@ -211,14 +212,17 @@ The following configuration files are used inside the container; you can rebuild
 | ChirpStack Gateway Bridge | `/etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml` |
 | Mosquitto              | `/etc/mosquitto/mosquitto.conf` |
 | LWN-Simulator          | `/LWN-Simulator/config.json` and `/LWN-Simulator/lwnsimulator/*.json` |
+| **Supervisord** (processi: MQTT, ChirpStack, LWN) | `/etc/supervisor/supervisord.conf` and `/etc/supervisor/conf.d/chirpstack.conf` |
 
 Edit these according to your network and region (e.g. band EU868 is set in the Network Server config).
+
+**Bootstrap (demo user + seed):** optional env vars when running the container: `CHIRPSTACK_DEMO_EMAIL` (default `demo@local`), `CHIRPSTACK_DEMO_PASSWORD` (default `demo`), `CHIRPSTACK_URL` (default `http://127.0.0.1:8080`). If `CHIRPSTACK_API_TOKEN` is set, bootstrap is skipped and the seed runs with that token instead.
 
 ---
 
 ## Student Demo Environment (ABP)
 
-The demo uses **ABP (Activation By Personalization)** so devices send data immediately (no join). A **one-shot script** configures both ChirpStack and LWN-Simulator; students run it once with their ChirpStack API token.
+The demo uses **ABP (Activation By Personalization)** so devices send data immediately (no join). **Bootstrap** (automatic at first start) creates a ChirpStack demo user and seeds gateways/devices from the LWN config; students log in with **demo@local** / **demo** (customizable via `CHIRPSTACK_DEMO_EMAIL` / `CHIRPSTACK_DEMO_PASSWORD`).
 
 ### What is pre-configured
 
@@ -241,23 +245,19 @@ flowchart LR
   - **Two ABP devices** (pre-configured in `devices.json`): "Temperature Sensor" and "Humidity Sensor", with DevAddr, NwkSKey, AppSKey set; `supportedOtaa: false` so they send without join.
   - **Auto-start**: simulation starts when the container starts (`autoStart: true`).
 
-- **ChirpStack** (after running the one-shot script): same organization, gateway, application, device profile (ABP, EU868), and two devices with matching DevEUI/DevAddr/NwkSKey/AppSKey.
+- **ChirpStack** (after bootstrap/seed): same organization, gateway, application, device profile (ABP, EU868), and two devices with matching DevEUI/DevAddr/NwkSKey/AppSKey.
 
-### One-shot setup (run once; students can use the same)
+### Bootstrap (automatic at first start)
 
-Run the script **once** after the container is up and you have a ChirpStack API token.
+At first start, the container runs **bootstrap**: it creates a ChirpStack user **demo@local** (password **demo**) and runs the **seed** (org, gateway, app, ABP devices from LWN config). No manual registration or API key needed.
 
 ```mermaid
 flowchart TD
-    A[Start container] --> B[Open ChirpStack http://localhost:8080]
-    B --> C[Register or log in]
-    C --> D[Settings → API keys → Add API key]
-    D --> E[Copy the API token]
-    E --> F["docker exec chirpstack /root/seed_demo.sh \"TOKEN\""]
-    F --> G[Script: ChirpStack org, gateway, app, ABP profile, 2 devices]
-    G --> H[Script: activate ABP sessions; add devices to LWN if needed; start LWN]
-    H --> I[Open LWN http://localhost:9000, turn ON gateway and devices]
-    I --> J[Uplinks appear in ChirpStack]
+    A[Start container] --> B[Bootstrap: wait ChirpStack, create user demo@local, login API → JWT]
+    B --> C[Seed: org, gateway, app, ABP profile, 2 devices from LWN JSON]
+    C --> D[Open ChirpStack http://localhost:8080, log in demo@local / demo]
+    D --> E[Open LWN http://localhost:9000, turn ON gateway and devices]
+    E --> F[Uplinks appear in ChirpStack]
 ```
 
 **Steps:**
@@ -267,22 +267,18 @@ flowchart TD
    docker run -dit --restart unless-stopped --name chirpstack \
      -p 8080:8080 -p 1883:1883 -p 9000:9000 chirpstack-complete
    ```
+   Wait ~30–40 s for bootstrap to finish (ChirpStack + LWN must be up; then user creation + login + seed).
 
-2. **Open ChirpStack** at **http://localhost:8080**, **register** or log in.
+2. **Log in to ChirpStack** at **http://localhost:8080** with **demo@local** / **demo** (or **admin**; the bootstrap adds both to demo-org).  
+   **Se nella sidebar non vedi nulla:** in alto a sinistra c’è il menu dell’organizzazione. Scegli **demo-org** (non “z-chirpstack”). Solo così compaiono **Gateways**, **Service profiles**, **Device profiles** e **Applications** (demo-gateway, demo-service-profile, Demo ABP Profile, demo-app). Le **API keys** si creano da **Settings** (icona ingranaggio) → **API keys** → **Add API key**.  
+   Per usare altre credenziali: `-e CHIRPSTACK_DEMO_EMAIL=your@email -e CHIRPSTACK_DEMO_PASSWORD=yourpass`.
 
-3. **Create an API key**: **Settings** → **API keys** → **Add API key**. Copy the token.
+3. **Optional — seed with your own API token:**  
+   If you prefer to register manually and use an API key, start the container with `-e CHIRPSTACK_API_TOKEN=your_token`. Then bootstrap is skipped and only the seed runs with that token (same result: org, gateway, app, devices from LWN config).
 
-4. **Run the one-shot script** (replace `YOUR_API_TOKEN`):
-   ```bash
-   docker exec chirpstack /root/seed_demo.sh "YOUR_API_TOKEN"
-   ```
-   **Optional auto-seed at startup:** if you already have an API token, you can run the container with `-e CHIRPSTACK_API_TOKEN=your_token` so the script runs automatically after ChirpStack and LWN are ready (no need to run step 4 manually).
-   The script uses **LWN config as single source of truth**: it reads `lwnsimulator_demo/gateways.json` and `devices.json` and creates in ChirpStack the same gateways and devices (with names, IDs, and ABP keys). So whatever you define in LWN is mirrored into ChirpStack.
-   - Creates organization "demo-org", network server, gateway profile, device profile (ABP EU868), service profile, application "demo-app".
-   - Creates every gateway from `gateways.json` and every device from `devices.json`, then activates ABP for each device.
-   - Starts the LWN simulation if the API is ready.
+4. **Open LWN-Simulator** at **http://localhost:9000**. Turn **ON** the gateway "Demo Gateway" and the two devices. Uplinks will appear in ChirpStack under **Applications** → **demo-app** → device → **LoRaWAN frames**.
 
-5. **Open LWN-Simulator** at **http://localhost:9000**. Turn **ON** the gateway "Demo Gateway" and the two devices. Uplinks will appear in ChirpStack under **Applications** → **demo-app** → device → **LoRaWAN frames**.
+The seed uses **LWN config as single source of truth**: it reads `lwnsimulator_demo/gateways.json` and `devices.json` and creates in ChirpStack the same gateways and devices (with names, IDs, and ABP keys). It creates organization "demo-org", network server, gateway profile, device profile (ABP EU868), service profile, application "demo-app", and starts the LWN simulation. **Note:** Gateway creation works; devices are created via API (create with snake_case, activate with camelCase and hex keys); if none exist after the seed, the bootstrap runs seed_devices_db.sh as fallback. If you don’t see the two devices under **Applications → demo-app**, create them once in the UI (DevEUI/DevAddr/NwkSKey/AppSKey from `lwnsimulator_demo/devices.json`) and activate ABP; uplinks from LWN will then appear in the device LoRaWAN frames.
 
 ### Student workflow (using the demo)
 
@@ -348,12 +344,14 @@ flowchart LR
 
 | Issue | What to check |
 |-------|----------------|
-| **LWN not reachable on port 9000** | LWN starts with a delay (12 s) and binds to `0.0.0.0:9000`. Ensure `-p 9000:9000` when running the container. **Start LWN manually:** `docker exec -d chirpstack sh -c 'cd /LWN-Simulator && screen -dmS lwn-simulator ./bin/lwnsimulator'` then wait ~5 s and open http://localhost:9000. The image includes a fallback loop that restarts LWN if it stops (rebuild to get it). |
+| **LWN not reachable on port 9000** | I servizi sono gestiti da **supervisord** (restart automatico). LWN parte con ~10 s di ritardo. Verifica: `docker exec chirpstack supervisorctl status`. Avvio manuale: `docker exec chirpstack supervisorctl start lwn-simulator`. Log: `docker exec chirpstack tail -30 /var/log/supervisor/lwn-simulator.log`. |
 | **"Unable to load info of gateway bridge" (LWN-Simulator)** | The image includes a fix for the bridge API URL (no trailing slash). Rebuild the image: `docker build -t chirpstack-complete .` and run the container again. |
-| **ChirpStack is empty (no org, gateway, devices)** | By design, ChirpStack is not pre-seeded. Run the one-shot script once with your API token: `docker exec chirpstack /root/seed_demo.sh "YOUR_TOKEN"`. Alternatively, start the container with `-e CHIRPSTACK_API_TOKEN=your_token` (or a file at `/root/chirpstack_token`) to auto-run the seed after services are up. |
-| **LWN: "Socket not connected"** | This message appears when you click **Run** and the **WebSocket** (Socket.IO) from the browser to the LWN server is not connected yet. **Fix:** (1) Refresh the page and wait 5–10 seconds before clicking Run, so Socket.IO can connect. (2) The image includes a frontend patch so Run is allowed even without WebSocket—rebuild the image (`docker build -t chirpstack-complete .`) and restart the container to get it. The ChirpStack Gateway Bridge (UDP 1700) is separate; ensure it is running with `docker exec chirpstack screen -ls` (you should see `gateway-bridge`). |
-| **Gateway not visible in ChirpStack** | Ensure the Gateway Bridge is running: `docker exec chirpstack screen -ls` (you should see `gateway-bridge`). In LWN-Simulator, turn the gateway **ON** and ensure bridge address is `127.0.0.1:1700`. |
-| **No uplinks (ABP)** | In ChirpStack, open each device → **Activation** and ensure ABP is set with the same DevAddr, NwkSKey, AppSKey as in the one-shot script (see script or README). Run the one-shot script again or activate once manually. |
+| **ChirpStack is empty / "not fully configured" / errors** | At first start, **bootstrap** creates user **demo@local** / **demo** and runs the seed. Wait ~30–40 s after starting the container, then log in at http://localhost:8080. To re-seed manually: `docker exec chirpstack /root/bootstrap_chirpstack.sh` (uses demo login), or `docker exec chirpstack /root/seed_demo.sh "YOUR_API_TOKEN"` if you have a token. |
+| **ChirpStack: database or connection errors** | PostgreSQL and Redis start before ChirpStack; DBs are created at build and at first start. If you see DB errors, run `docker restart chirpstack`. |
+| **LWN: "Socket not connected"** | Messaggio del **WebSocket** (Socket.IO) browser ↔ LWN. Refresh della pagina e attendere 5–10 s prima di cliccare Run. L’immagine include una patch per consentire Run anche senza WebSocket. |
+| **Gateway not visible in ChirpStack** | Verifica che i processi siano up: `docker exec chirpstack supervisorctl status` (tutti RUNNING). Se gateway-bridge è FATAL/EXITED: `docker exec chirpstack supervisorctl start chirpstack-gateway-bridge`. In LWN accendi il gateway e imposta bridge `127.0.0.1:1700`. |
+| **Device status N/A** | In ChirpStack, "Last seen" si aggiorna quando il device invia uplink (LWN attivo, gateway e device ON). Lo "Status" (battery/margin) resta N/A finché il device non risponde a un comando DevStatusReq; per i demo ABP è normale. Attendere 30–60 s dopo l’avvio di LWN. |
+| **No uplinks (ABP)** | In ChirpStack, open each device → **Activation** and ensure ABP is set with the same DevAddr, NwkSKey, AppSKey as in the seed (see `seed_demo.sh` or LWN `devices.json`). Re-run `bootstrap_chirpstack.sh` or `seed_demo.sh` with a token to re-seed, or activate ABP once manually. |
 | **Simulation does not start** | Check logs: `docker logs chirpstack`. If you prefer to start the simulation manually from the LWN UI, set `autoStart: false` in `config.json` in the Dockerfile and rebuild the image. |
 | **Port 1883 already in use** | Use `-p 1884:1883` when running the container and connect MQTT clients to port 1884 on the host. |
 

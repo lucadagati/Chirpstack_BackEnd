@@ -11,7 +11,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN mkdir /run/mosquitto/ && chmod 777 /run/mosquitto/
 
 # Installa le dipendenze
-RUN apt-get update && apt-get install -y postgresql mosquitto nano net-tools iputils-ping wget curl software-properties-common build-essential tar ssh git screen mosquitto redis-server -y
+RUN apt-get update && apt-get install -y postgresql mosquitto nano net-tools iputils-ping wget curl software-properties-common build-essential tar ssh git supervisor mosquitto redis-server -y
 
 # Aggiungi la chiave GPG e il repository di ChirpStack
 RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 1CE2AFD36DBCCA00
@@ -63,7 +63,15 @@ RUN mkdir -p /etc/chirpstack-gateway-bridge
 COPY chirpstack-gateway-bridge.toml /etc/chirpstack-gateway-bridge/
 COPY lwnsimulator_demo/ /LWN-Simulator/lwnsimulator/
 COPY seed_demo.sh /root/
-RUN chmod +x /root/seed_demo.sh
+COPY seed_devices_db.sh /root/
+COPY bootstrap_chirpstack.sh /root/
+COPY run_lwn.sh /root/
+COPY run_lwn_delayed.sh /root/
+RUN chmod +x /root/seed_demo.sh /root/seed_devices_db.sh /root/bootstrap_chirpstack.sh /root/run_lwn.sh /root/run_lwn_delayed.sh
+# Supervisord: gestione persistente di tutti i servizi (no screen)
+RUN mkdir -p /var/log/supervisor
+COPY supervisord.conf /etc/supervisor/supervisord.conf
+COPY supervisor-chirpstack.conf /etc/supervisor/conf.d/chirpstack.conf
 
 # Abilita avvio automatico della simulazione LWN
 RUN sed -i 's/"autoStart": false/"autoStart": true/' /LWN-Simulator/config.json

@@ -1,60 +1,29 @@
 #!/bin/bash
+# Avvio: PostgreSQL, Redis, (optional seed in background), poi supervisord come PID 1.
+# Supervisord gestisce in modo persistente: mosquitto, ChirpStack NS/AS, Gateway Bridge, LWN.
 
-# Avvia PostgreSQL
+# PostgreSQL e DB ChirpStack
 service postgresql start
-
-#Avvia Redis
-service redis-server start
-
-# Avvia il ChirpStack Network Server in una schermata screen
-screen -dmS network-server chirpstack-network-server
-
-# Avvia il ChirpStack Application Server in una schermata screen
-screen -dmS application-server chirpstack-application-server
-
-# Avvia Mqtt
-screen -dmS mqtt mosquitto -c /etc/mosquitto/mosquitto.conf
-
-# Attendi che MQTT sia pronto prima di avviare il Gateway Bridge
-sleep 5
-
-# Avvia ChirpStack Gateway Bridge (UDP 1700 -> MQTT); LWN si connette qui
-screen -dmS gateway-bridge chirpstack-gateway-bridge -c /etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml
 sleep 3
+/root/setup_postgresql.sh 2>/dev/null || true
 
-# LWN-Simulator: avvio ritardato (porta 9000)
-(
-  sleep 12
-  cd /LWN-Simulator && test -x bin/lwnsimulator && screen -dmS lwn-simulator ./bin/lwnsimulator
-) >> /var/log/lwn-start.log 2>&1 &
-# Fallback: ogni 60s se 9000 non risponde, riavvia LWN
-(
-  sleep 30
-  while true; do
-    curl -s -o /dev/null -m 2 http://127.0.0.1:9000/api/status || {
-      screen -S lwn-simulator -X quit 2>/dev/null
-      cd /LWN-Simulator && test -x bin/lwnsimulator && screen -dmS lwn-simulator ./bin/lwnsimulator
-    }
-    sleep 60
-  done
-) >> /var/log/lwn-start.log 2>&1 &
-disown 2>/dev/null || true
+# Redis
+service redis-server start
+sleep 2
 
-# Optional: auto-run seed if token is provided (env CHIRPSTACK_API_TOKEN or file /root/chirpstack_token)
+# Auto-seed ChirpStack (in background): con token fornito, oppure bootstrap (crea utente demo + login API + seed)
 (
   TOKEN="${CHIRPSTACK_API_TOKEN:-}"
   [ -z "$TOKEN" ] && [ -f /root/chirpstack_token ] && TOKEN="$(cat /root/chirpstack_token)"
+  echo "Waiting for ChirpStack (8080)..."
+  for i in $(seq 1 45); do curl -s -o /dev/null http://127.0.0.1:8080/ && break; sleep 2; done
+  sleep 5
   if [ -n "$TOKEN" ]; then
-    echo "Waiting for ChirpStack and LWN-Simulator to be ready for auto-seed..."
-    for i in $(seq 1 30); do
-      curl -s -o /dev/null http://127.0.0.1:8080/ && curl -s -o /dev/null http://127.0.0.1:9000/api/status && break
-      sleep 2
-    done
-    sleep 5
-    /root/seed_demo.sh "$TOKEN" && echo "Auto-seed completed." || true
+    /root/seed_demo.sh "$TOKEN" && echo "Auto-seed completed (token)." || true
+  else
+    /root/bootstrap_chirpstack.sh && echo "Bootstrap (utente demo + seed) completed." || true
   fi
 ) &
 
-# Mantieni il container in esecuzione
-tail -f /dev/null
-
+# Supervisord come processo principale (gestisce mosquitto, ChirpStack, LWN; restart automatico)
+exec /usr/bin/supervisord -n -c /etc/supervisor/supervisord.conf

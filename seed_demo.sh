@@ -31,7 +31,7 @@ echo "=== ChirpStack (seeded from LWN config) ==="
 echo "Organization and network server..."
 ORG_CREATE=$(curl -s -X POST "$API/organizations" \
   -H "Content-Type: application/json" -H "$AUTH_HEADER" \
-  -d '{"organization":{"name":"demo-org","displayName":"Demo (LWN)"}}')
+  -d '{"organization":{"name":"demo-org","displayName":"Demo (LWN)","canHaveGateways":true}}')
 ORG_ID=$(get_id "$ORG_CREATE")
 if [ -z "$ORG_ID" ]; then
   ORG_LIST=$(curl -s -X GET "$API/organizations?limit=100" -H "$AUTH_HEADER")
@@ -52,12 +52,13 @@ fi
 [ -z "$NS_ID" ] && { echo "No network server."; exit 1; }
 echo "  Network server ID: $NS_ID"
 
-echo "Gateway profile..."
+echo "Gateway profile (EU868 channels 0,1,2)..."
 GP_RESP=$(curl -s -X POST "$API/gateway-profiles" \
   -H "Content-Type: application/json" -H "$AUTH_HEADER" \
-  -d "{\"gatewayProfile\":{\"name\":\"Demo Gateway Profile\",\"networkServerID\":\"$NS_ID\"}}")
+  -d "{\"gatewayProfile\":{\"name\":\"Demo Gateway Profile\",\"networkServerID\":\"$NS_ID\",\"channels\":[0,1,2]}}")
 GP_ID=$(get_id "$GP_RESP")
 [ -z "$GP_ID" ] && GP_ID=$(get_id "$(curl -s -X GET "$API/gateway-profiles?limit=100" -H "$AUTH_HEADER")")
+[ -z "$GP_ID" ] && echo "  Warning: gateway profile not created (check API response: $GP_RESP)" || echo "  Gateway profile ID: $GP_ID"
 
 echo "Device profile (ABP, EU868)..."
 DP_RESP=$(curl -s -X POST "$API/device-profiles" \
@@ -93,8 +94,11 @@ else
     gw_name=$(echo "$line" | cut -d'|' -f2-)
     [ -z "$gw_id" ] && continue
     gw_name=${gw_name:-"Gateway $gw_id"}
-    gw_body="{\"gateway\":{\"id\":\"$gw_id\",\"name\":\"$gw_name\",\"organizationID\":\"$ORG_ID\",\"networkServerID\":\"$NS_ID\",\"description\":\"LWN\"}}"
-    [ -n "$GP_ID" ] && gw_body="{\"gateway\":{\"id\":\"$gw_id\",\"name\":\"$gw_name\",\"organizationID\":\"$ORG_ID\",\"networkServerID\":\"$NS_ID\",\"gatewayProfileID\":\"$GP_ID\",\"description\":\"LWN\"}}"
+    # ChirpStack gateway name: no spaces (use slug)
+    gw_name_slug=$(echo "$gw_name" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g')
+    [ -z "$gw_name_slug" ] && gw_name_slug="gateway-$gw_id"
+    gw_body="{\"gateway\":{\"id\":\"$gw_id\",\"name\":\"$gw_name_slug\",\"organizationID\":\"$ORG_ID\",\"networkServerID\":\"$NS_ID\",\"description\":\"$gw_name\",\"location\":{\"latitude\":37.5,\"longitude\":15.0,\"altitude\":0}}}"
+    [ -n "$GP_ID" ] && gw_body="{\"gateway\":{\"id\":\"$gw_id\",\"name\":\"$gw_name_slug\",\"organizationID\":\"$ORG_ID\",\"networkServerID\":\"$NS_ID\",\"gatewayProfileID\":\"$GP_ID\",\"description\":\"$gw_name\",\"location\":{\"latitude\":37.5,\"longitude\":15.0,\"altitude\":0}}}"
     curl -s -X POST "$API/gateways" -H "Content-Type: application/json" -H "$AUTH_HEADER" -d "$gw_body" >/dev/null 2>&1 || true
     echo "  Gateway: $gw_id ($gw_name)"
   done < <(python3 - "$GW_JSON" << 'PYGW'
@@ -129,12 +133,16 @@ else
     app_skey=$(echo "$line" | cut -d'|' -f5)
     [ -z "$dev_eui" ] && continue
     dev_name=${dev_name:-"Device $dev_eui"}
+    dev_name_slug=$(echo "$dev_name" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g')
+    [ -z "$dev_name_slug" ] && dev_name_slug="device-$dev_eui"
+    # Create: snake_case; skip_f_cnt_check=true per ABP (evita N/A per frame counter)
     curl -s -X POST "$API/devices" \
       -H "Content-Type: application/json" -H "$AUTH_HEADER" \
-      -d "{\"device\":{\"devEui\":\"$dev_eui\",\"name\":\"$dev_name\",\"applicationID\":\"$APP_ID\",\"deviceProfileID\":\"$DP_ID\",\"description\":\"LWN\"}}" >/dev/null 2>&1 || true
+      -d "{\"device\":{\"dev_eui\":\"$dev_eui\",\"name\":\"$dev_name_slug\",\"application_id\":$APP_ID,\"device_profile_id\":\"$DP_ID\",\"description\":\"$dev_name\",\"skip_f_cnt_check\":true}}" >/dev/null 2>&1 || true
+    # Activate: camelCase (deviceActivation), chiavi in hex; servono anche sNwkSIntKey e fNwkSIntKey (1.0 = stesso valore)
     curl -s -X POST "$API/devices/$dev_eui/activate" \
       -H "Content-Type: application/json" -H "$AUTH_HEADER" \
-      -d "{\"deviceActivation\":{\"devEui\":\"$dev_eui\",\"devAddr\":\"$dev_addr\",\"nwkSEncKey\":\"$nwk_skey\",\"appSKey\":\"$app_skey\"}}" >/dev/null 2>&1 || true
+      -d "{\"deviceActivation\":{\"devEui\":\"$dev_eui\",\"devAddr\":\"$dev_addr\",\"nwkSEncKey\":\"$nwk_skey\",\"appSKey\":\"$app_skey\",\"sNwkSIntKey\":\"$nwk_skey\",\"fNwkSIntKey\":\"$nwk_skey\"}}" >/dev/null 2>&1 || true
     echo "  Device: $dev_eui ($dev_name) ABP $dev_addr"
   done < <(python3 - "$DEV_JSON" << 'PYDEV'
 import json, sys
@@ -145,11 +153,13 @@ try:
         if isinstance(v, dict) and "info" in v:
             info = v["info"]
             eui = (info.get("devEUI") or "").strip().lower().replace(":", "").replace("-", "")
+            if len(eui) != 16:
+                continue
             name = (info.get("name") or "").strip() or ("Device " + eui)
             addr = (info.get("devAddr") or "").strip().lower().replace(":", "").replace("-", "")
             nwk = (info.get("nwkSKey") or "").strip().lower()
             app = (info.get("appSKey") or "").strip().lower()
-            if eui and addr and nwk and app:
+            if eui and addr and nwk and app and len(addr) == 8 and len(nwk) == 32 and len(app) == 32:
                 print(eui + "|" + name + "|" + addr + "|" + nwk + "|" + app)
 except Exception as e:
     sys.exit(1)
