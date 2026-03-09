@@ -30,6 +30,8 @@ This repository provides:
 
 At first start, **bootstrap** creates a demo user and seeds ChirpStack from the LWN config (no manual registration or API key). Students log in to ChirpStack with **demo@local** / **demo**, open LWN-Simulator, turn on the gateway and devices, and see uplinks in ChirpStack.
 
+This repository is **self-contained**: the LWN-Simulator sources are included in `vendor/LWN-Simulator` (no external git clone during Docker build). Gateway and devices use the default location **Università degli Studi di Messina – Ingegneria UNIME** (38.26°N, 15.59°E).
+
 ---
 
 ## Theory: LoRaWAN and ChirpStack
@@ -278,8 +280,7 @@ flowchart TD
 
 4. **Open LWN-Simulator** at **http://localhost:9000**. Turn **ON** the gateway "Demo Gateway" and the two devices. Uplinks will appear in ChirpStack under **Applications** → **demo-app** → device → **LoRaWAN frames**.
 
-The seed uses **LWN config as single source of truth**: it reads `lwnsimulator_demo/gateways.json` and `devices.json` and creates in ChirpStack the same gateways and devices (with names, IDs, and ABP keys). It creates organization "demo-org", network server, gateway profile, device profile (ABP EU868), service profile, application "demo-app", and starts the LWN simulation. **Note:** Gateway creation works; devices are created via API (create with snake_case, activate with camelCase and hex keys); if none exist after the seed, the bootstrap runs seed_devices_db.sh as fallback. If you don’t see the two devices under **Applications → demo-app**, create them once in the UI (DevEUI/DevAddr/NwkSKey/AppSKey from `lwnsimulator_demo/devices.json`) and activate ABP; uplinks from LWN will then appear in the device LoRaWAN frames.
-
+The seed uses **LWN config as single source of truth**: it reads `lwnsimulator_demo/gateways.json` and `devices.json` and creates in ChirpStack the same gateways and devices (with names, IDs, and ABP keys). It creates organization "demo-org", network server, gateway profile, device profile (ABP EU868), service profile, application "demo-app", and starts the LWN simulation. **Note:** Gateway creation works; devices are created via API; il bootstrap esegue poi **seed_devices_db.sh** per scrivere le sessioni ABP nel Network Server (device_activation), così entrambi i device ricevono gli uplink e mostrano "Last seen". 
 ### Student workflow (using the demo)
 
 ```mermaid
@@ -346,6 +347,7 @@ flowchart LR
 |-------|----------------|
 | **LWN not reachable on port 9000** | I servizi sono gestiti da **supervisord** (restart automatico). LWN parte con ~10 s di ritardo. Verifica: `docker exec chirpstack supervisorctl status`. Avvio manuale: `docker exec chirpstack supervisorctl start lwn-simulator`. Log: `docker exec chirpstack tail -30 /var/log/supervisor/lwn-simulator.log`. |
 | **"Unable to load info of gateway bridge" (LWN-Simulator)** | The image includes a fix for the bridge API URL (no trailing slash). Rebuild the image: `docker build -t chirpstack-complete .` and run the container again. |
+| **"Cannot read properties of undefined (reading 'delay' or 'dataRate')" in LWN-Simulator** | The vendored frontend in `vendor/LWN-Simulator` includes defensive checks for device/region data. Rebuild the image so the fixed `custom.js` is used. |
 | **ChirpStack is empty / "not fully configured" / errors** | At first start, **bootstrap** creates user **demo@local** / **demo** and runs the seed. Wait ~30–40 s after starting the container, then log in at http://localhost:8080. To re-seed manually: `docker exec chirpstack /root/bootstrap_chirpstack.sh` (uses demo login), or `docker exec chirpstack /root/seed_demo.sh "YOUR_API_TOKEN"` if you have a token. |
 | **ChirpStack: database or connection errors** | PostgreSQL and Redis start before ChirpStack; DBs are created at build and at first start. If you see DB errors, run `docker restart chirpstack`. |
 | **LWN: "Socket not connected"** | Messaggio del **WebSocket** (Socket.IO) browser ↔ LWN. Refresh della pagina e attendere 5–10 s prima di cliccare Run. L’immagine include una patch per consentire Run anche senza WebSocket. |

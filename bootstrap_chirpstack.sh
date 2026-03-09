@@ -70,10 +70,9 @@ if [ -z "$JWT" ]; then
   exit 1
 fi
 
-# Fallback: se l'API non ha creato device (es. errore), creali nel DB
-# (normalmente il seed li crea via API con snake_case + activate con camelCase e chiavi hex)
-COUNT=$(PGPASSWORD=dbpassword psql -h localhost -U chirpstack_as -d chirpstack_as -t -A -c "SELECT count(*) FROM device WHERE application_id = (SELECT id FROM application WHERE name = 'demo-app' LIMIT 1);" 2>/dev/null)
-[ "${COUNT:-0}" = "0" ] && [ -x /root/seed_devices_db.sh ] && /root/seed_devices_db.sh || true
+# Popola sempre le sessioni ABP nel Network Server (device_activation); l'API activate aggiorna solo l'AS,
+# quindi senza questo il secondo device resta N/A (last_seen). Idempotente: non duplica device esistenti.
+[ -x /root/seed_devices_db.sh ] && /root/seed_devices_db.sh || true
 
 # Associa utenti a demo-org, abilita gateways, metti demo-org prima nella lista (rinomina org vuota)
 DEMO_EMAIL_SQL="${CHIRPSTACK_DEMO_EMAIL//\'/\'\'}"

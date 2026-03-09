@@ -97,8 +97,8 @@ else
     # ChirpStack gateway name: no spaces (use slug)
     gw_name_slug=$(echo "$gw_name" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g')
     [ -z "$gw_name_slug" ] && gw_name_slug="gateway-$gw_id"
-    gw_body="{\"gateway\":{\"id\":\"$gw_id\",\"name\":\"$gw_name_slug\",\"organizationID\":\"$ORG_ID\",\"networkServerID\":\"$NS_ID\",\"description\":\"$gw_name\",\"location\":{\"latitude\":37.5,\"longitude\":15.0,\"altitude\":0}}}"
-    [ -n "$GP_ID" ] && gw_body="{\"gateway\":{\"id\":\"$gw_id\",\"name\":\"$gw_name_slug\",\"organizationID\":\"$ORG_ID\",\"networkServerID\":\"$NS_ID\",\"gatewayProfileID\":\"$GP_ID\",\"description\":\"$gw_name\",\"location\":{\"latitude\":37.5,\"longitude\":15.0,\"altitude\":0}}}"
+    gw_body="{\"gateway\":{\"id\":\"$gw_id\",\"name\":\"$gw_name_slug\",\"organizationID\":\"$ORG_ID\",\"networkServerID\":\"$NS_ID\",\"description\":\"$gw_name\",\"location\":{\"latitude\":38.259987,\"longitude\":15.592595,\"altitude\":0}}}"
+    [ -n "$GP_ID" ] && gw_body="{\"gateway\":{\"id\":\"$gw_id\",\"name\":\"$gw_name_slug\",\"organizationID\":\"$ORG_ID\",\"networkServerID\":\"$NS_ID\",\"gatewayProfileID\":\"$GP_ID\",\"description\":\"$gw_name\",\"location\":{\"latitude\":38.259987,\"longitude\":15.592595,\"altitude\":0}}}"
     curl -s -X POST "$API/gateways" -H "Content-Type: application/json" -H "$AUTH_HEADER" -d "$gw_body" >/dev/null 2>&1 || true
     echo "  Gateway: $gw_id ($gw_name)"
   done < <(python3 - "$GW_JSON" << 'PYGW'

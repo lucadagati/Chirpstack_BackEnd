@@ -1,6 +1,7 @@
 #!/bin/bash
-# Crea i 2 device LWN direttamente nel DB (AS + NS) quando l'API device create fallisce.
-# Eseguito dal bootstrap dopo seed_demo.sh. Dati da lwnsimulator_demo/devices.json.
+# Sincronizza i 2 device LWN nel Network Server (device + device_activation) così entrambi ricevono uplink.
+# L'API activate aggiorna solo l'AS; il NS ha bisogno di device_activation per decodificare. Idempotente.
+# Eseguito dal bootstrap dopo seed_demo.sh.
 set -e
 export PGPASSWORD="${PGPASSWORD:-dbpassword}"
 

@@ -35,8 +35,8 @@
 				"nbRetransmission": 0
 			},
 			"location": {
-				"latitude": 37.5,
-				"longitude": 15.0
+				"latitude": 38.259987,
+				"longitude": 15.592595
 			},
 			"rxs": []
 		}
@@ -63,7 +63,7 @@
 			},
 			"configuration": {
 				"region": 0,
-				"sendInterval": 45,
+				"sendInterval": 30,
 				"ackTimeout": 5,
 				"range": 10000,
 				"disableFCntDown": false,
@@ -77,8 +77,8 @@
 				"nbRetransmission": 0
 			},
 			"location": {
-				"latitude": 37.5,
-				"longitude": 15.0
+				"latitude": 38.259987,
+				"longitude": 15.592595
 			},
 			"rxs": []
 		}

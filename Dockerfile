@@ -38,8 +38,8 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 RUN go install github.com/rakyll/statik@latest
 ENV PATH="${PATH}:/root/go/bin"
 
-# Clona e installa LWN Simulator
-RUN git clone https://github.com/UniCT-ARSLab/LWN-Simulator.git
+# Usa LWN-Simulator incluso nel repo (nessun clone esterno)
+COPY vendor/LWN-Simulator /LWN-Simulator
 WORKDIR /LWN-Simulator
 # Porta 9000 e bind su tutte le interfacce (raggiungibile da host)
 RUN sed -i 's/"port":8000,/"port":9000,/' config.json && \
@@ -51,7 +51,8 @@ RUN sed -i 's|url+"/api/bridge/"|url+"/api/bridge"|g' webserver/public/js/custom
 # Fix: "Socket not connected" blocks Run — allow start even if Socket.IO not yet connected (real-time updates may be delayed)
 RUN sed -i 's/if (!socket.connected){/if (false \&\& !socket.connected){ \/\/ bypass: allow Run without WebSocket/' webserver/public/js/custom/custom.js
 RUN make install-dep
-RUN make build
+# Force statik to be regenerated so embedded FS has index.html (path relative to webserver/public)
+RUN rm -rf webserver/statik && make build
 
 # Copia i file di configurazione
 COPY chirpstack-network-server.toml /etc/chirpstack-network-server/
